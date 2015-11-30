@@ -10,10 +10,10 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
  *
- *	SmartPower Outlet (CentraLite)
+ *	 Smartenit Outlet (#4035A)
  *
- *	Author: SmartThings
- *	Date: 2015-08-23
+ *	Author: Jeff Basso
+ *	Date: 2015-11-21
  */
  import groovy.transform.Field
     
@@ -225,4 +225,3 @@ def FindAttrib(descMap, attrib){
     }
     return AttribValue 
 }    
-
