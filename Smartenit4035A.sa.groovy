@@ -10,34 +10,41 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
  *
- *	 Smartenit Outlet (#4035A)
+ *	SmartPower Outlet (CentraLite)
  *
- *	Author: Jeff Basso
- *	Date: 2015-11-21
+ *	Author: SmartThings
+ *	Date: 2015-08-23
  */
+ import groovy.transform.Field
+    
+ @Field final ElecMeasCluster = "0B04"
+ @Field final RMSVoltageAttribute = "0505"
+ @Field final RMSCurrentAttribute = "0805"
+ @Field final ActivePowerAttribute = "0B05"
+ @Field final PowerFactorAttribute = "1005"
+ @Field final UnsignedInteger16 = "21" 
+ @Field final SignedInteger16 = "29"
+ @Field final SignedInteger8 = "28"
+ @Field final Milli = 0.001
+ @Field final Centi = 0.01
+ 
 metadata {
-	definition (name: "Smartenit Outlet", namespace: "jjbasso", author: "Jeff Basso") {
-		capability "Actuator"		// http://docs.smartthings.com/en/latest/capabilities-reference.html#actuator
-		capability "Switch" 		// http://docs.smartthings.com/en/latest/capabilities-reference.html#relay-switch
-		capability "Power Meter" 	// http://docs.smartthings.com/en/latest/capabilities-reference.html#power-meter
-		capability "Configuration"	// http://docs.smartthings.com/en/latest/capabilities-reference.html#configuration
-		capability "Refresh"		// http://docs.smartthings.com/en/latest/capabilities-reference.html#refresh
-		capability "Sensor"			// http://docs.smartthings.com/en/latest/capabilities-reference.html#sensor
+	// Automatically generated. Make future change here.
+	definition (name: "Smartenit Outlet", namespace: "Jjbasso/smartenit4035A", author: "Jeff Basso") {
+		capability "Actuator"
+		capability "Switch"
+		capability "Power Meter"
+		capability "Configuration"
+		capability "Refresh"
+		capability "Sensor"
 
 		// indicates that device keeps track of heartbeat (in state.heartbeat)
 		attribute "heartbeat", "string"
-
+		
 		fingerprint profileId: "0104", inClusters: "0000,0003,0004,0005,0006,0015,0702", manufacturer: "smartenit",  model: "4035A", deviceJoinName: "Outlet"
+        fingerprint profileId: "0104", inClusters: "0000,0003,0004,0005,0006,0015,0702"
         
-      //  0x0000:Basic Attributes for determining basic information and setting and enabling device
-      //  0x0003:Identify Attributes and commands for putting a device into Identification mode
-      //  0x0004:Groups Attributes and commands for group configuration and manipulation
-	  //  0x0005:Scenes Attributes and commands for scene configuration and manipulation
-      //  0x0006:On/Off Attributes and commands for switching device.
-      //  0x0015:Commission Attributes and commands pertaining to the commissioning and management of ZigBee devices operating in a network
-      //  0x0702:Simple Metering Provides mechanism to retrieve electric power usage
-        
-	}
+}
 
 	// simulator metadata
 	simulator {
@@ -84,35 +91,43 @@ metadata {
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-	log.info "****************** Begin Parse ******************"
+	log.debug "description is $description"
 
 	// save heartbeat (i.e. last time we got a message from device)
 	state.heartbeat = Calendar.getInstance().getTimeInMillis()
 
 	def finalResult = zigbee.getKnownDescription(description)
-	  
-	
-    //TODO: Remove this after getKnownDescription can parse it automatically
+
+	//TODO: Remove this after getKnownDescription can parse it automatically
 	if (!finalResult && description!="updated")
 		finalResult = getPowerDescription(zigbee.parseDescriptionAsMap(description))
-	
-        
+
 	if (finalResult) {
-    log.info finalResult
-		if (finalResult.type == "power") {
-        	log.info "Raw: $description"
+		log.info finalResult
+		if (finalResult.type == "update") {
+			log.info "$device updates: ${finalResult.value}"
+		}
+		else if (finalResult.type == "power") {
 			def powerValue = (finalResult.value as Integer)
 			sendEvent(name: "power", value: powerValue)
 		}
 		else {
 			sendEvent(name: finalResult.type, value: finalResult.value)
-        }
+		}
 	}
 	else {
-		log.warn "DID NOT PARSE MESSAGE for description : $description"
+		//log.warn "DID NOT PARSE MESSAGE for description : $description"
+		//log.debug zigbee.parseDescriptionAsMap(description)
+        log.info "HA Electrical Measurement Specification : $description"
         finalResult = getPowerDescription(zigbee.parseDescriptionAsMap(description))
-    }
-	log.info "****************** End Parse ******************"
+        if (finalResult.type == "power") {
+        	def powerValue = (finalResult.value as Integer)
+			sendEvent(name: "power", value: powerValue)
+		}
+        else {
+            log.warn "Description not parsed for HA Electrical Measurement Specification"
+    	}
+	}
 }
 
 def off() {
@@ -124,14 +139,14 @@ def on() {
 }
 
 def refresh() {
-	//Tested:jbasso 11-21-2015 - Clean
 	sendEvent(name: "heartbeat", value: "alive", displayed:false)
-    zigbee.onOffRefresh() + zigbee.electricMeasurementPowerRefresh()
+	//zigbee.onOffRefresh() + zigbee.refreshData("0x0B04", "0x050B")
+    zigbee.onOffRefresh() + zigbee.electricMeasurementPowerRefresh() + zigbee.refreshData("0x0B04", "0x050B")
 }
 
 def configure() {
-	log.debug "Configuring Reporting and Bindings."
-    zigbee.onOffConfig() + zigbee.electricMeasurementPowerConfig()
+	//zigbee.onOffConfig() + powerConfig() + refresh()
+     zigbee.onOffConfig() + powerConfig() + zigbee.electricMeasurementPowerConfig() + Refresh()
 }
 
 //power config for devices with min reporting interval as 1 seconds and reporting interval if no activity as 10min (600s)
@@ -139,6 +154,7 @@ def configure() {
 def powerConfig() {
 	[
 		"zdo bind 0x${device.deviceNetworkId} 1 ${endpointId} 0x0B04 {${device.zigbeeId}} {}", "delay 200",
+		"zcl global send-me-a-report 0x0B04 0x050B 0x29 1 600 {05 00}",				//The send-me-a-report is custom to the attribute type for CentraLite
 		"send 0x${device.deviceNetworkId} 1 ${endpointId}", "delay 500"
 	]
 }
@@ -161,13 +177,17 @@ def getPowerDescription(descMap) {
 			return	[type: "update", value : "power (0B04) capability configured successfully"]
 		}
 	}
-    if (descMap.cluster == "0B04") {
-		if (descMap.attrId == "0505") {
-        log.info "Parsed Data: $descMap"
-			//parse code here
+    
+    if (descMap.cluster == ElecMeasCluster) {
+		if (descMap.attrId == RMSVoltageAttribute) {
+        	def RMSVoltageValue = FindAttrib(descMap.raw, RMSVoltageAttribute)
+			def RMSCurrentValue = FindAttrib(descMap.raw, RMSCurrentAttribute)
+			def PowerFactorValue= FindAttrib(descMap.raw, PowerFactorAttribute)
+			if ((RMSVoltageValue != 'error') || (RMSCurrentValue != 'error') || (PowerFactorValue != 'error')){
+    			powerValue = RMSVoltageValue * RMSCurrentValue * Milli * PowerFactorValue * Centi
+        	}
 		}
 	}
-      
 
 	if (powerValue != "undefined"){
 		return	[type: "power", value : powerValue]
@@ -177,5 +197,32 @@ def getPowerDescription(descMap) {
 	}
 }
 
-      
+def FindAttrib(descMap, attrib){
+    def dtStartPoint = descMap.indexOf(attrib) + attrib.length()
+    def dtValue = descMap.substring(dtStartPoint, dtStartPoint + 2)
+    def AttribValueStartPoint = descMap.indexOf(attrib) + attrib.length() + 2
+    def AttribValue
+    
+    if(dtValue == UnsignedInteger16){ 
+       AttribValue = descMap.substring(AttribValueStartPoint ,AttribValueStartPoint + 4)         
+       AttribValue = "${AttribValue.substring(2,4)}${AttribValue.substring(0,2)}".toString() 
+       AttribValue  = Long.parseLong(AttribValue , 16);       
+       if(AttribValue == 'ffff'){ AttribValue = "error"}
+    }
+    else if(dtValue == SignedInteger16){
+       AttribValue = descMap.substring(AttribValueStartPoint ,AttribValueStartPoint + 4)         
+       AttribValue = "${AttribValue.substring(2,4)}${AttribValue.substring(0,2)}".toString()
+       AttribValue  = Long.parseLong(AttribValue , 16);
+       if(AttribValue == '8000'){ AttribValue = "error"}    
+    }
+    else if(dtValue == SignedInteger8){
+       AttribValue = descMap.substring(AttribValueStartPoint ,AttribValueStartPoint + 2)         
+     AttribValue  = Long.parseLong(AttribValue , 16);      
+        if(AttribValue == '80'){ AttribValue = "error"}    
+    }
+    else{
+       AttribValue = 'error'
+    }
+    return AttribValue 
+}    
 
